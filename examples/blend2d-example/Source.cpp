@@ -7,7 +7,7 @@
 
 BLImage OpenSvgFile(const std::string& filepath)
 {
-	static Svg::Renderer::Blend2d::BLResource res(OpenSvgFile);
+	Svg::Renderer::Blend2d ren(OpenSvgFile);
 	Svg::Document doc(nullptr);
 	BLImage image;
 
@@ -26,7 +26,7 @@ BLImage OpenSvgFile(const std::string& filepath)
 		return image;
 	}
 
-	image = Svg::Renderer::Blend2d::Render(doc, Svg::Point(1.0f, 1.0f), &res);
+	image = ren.Render(doc, Svg::Point(1.0f, 1.0f));
 	if (image.empty())
 		std::cout << "Unable to render parsed file" << std::endl;
 	return image;
