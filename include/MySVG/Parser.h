@@ -10,10 +10,6 @@
 #include "Elements.h"
 #include "Style.h"
 
-#define IS_NUMBER(ch) ((bool) (ch >= '0' && ch <= '9'))
-#define IS_SPACE(ch) ((bool) (ch == ' ' || (ch >= 9 && ch <= 13)))
-#define DECIMAL_POINT '.'
-
 namespace Svg
 {
 	struct Flag
@@ -24,7 +20,7 @@ namespace Svg
 			{
 				_INTERNAL_START  = 1 << 1,
 				
-				SVG              = 1 << 1,	//Loads the <svg> element, don't apply tot the main <svg>
+				SVG              = 1 << 1,	//Loads the <svg> element, don't apply to the main <svg>
 				G                = 1 << 2,	//Loads the <g> element
 				MARKER           = 1 << 3,	//Loads the <marker> element
 				PATH             = 1 << 4,	//Loads the <path> element
@@ -123,6 +119,7 @@ namespace Svg
 
 		bool CompareElement(String& name, const char* element);
 		bool CompareElement(uint32_t&& flag, String& name, const char* element);
+		bool CompareAttribute(String& name, const char* attribute);
 
 		Parser& SetDocument(Document* doc)
 		{
@@ -206,8 +203,6 @@ namespace Svg
 		void ParseElementRadialGradient(AttributeList& attributes, RadialGradientElement* rad);
 		void ParseElementStop(AttributeList& attributes, GradientElement* parent);
 
-
-		bool ParseAttribute(String& name, const char* attribute);
 		//Common attributes
 		bool ParseCoreAttributes(String& name, String& value, Element* element);
 		bool ParseFillAttributes(String& name, String& value, FillProperties* fill);
@@ -260,10 +255,11 @@ namespace Svg
 		uint32_t    ParseTypeNumberList(String& value, const uint32_t count, float* data);
 		bool        ParseTypeColor(String& value, Color& color);
 		bool        ParseTypeColorAlpha(String& value, float& alpha);
-		bool        ParseTypeIRIEx(String& value, std::weak_ptr<Element>* ref, bool NeedBrackets, RefContainer& where);
+		bool        ParseTypeIRIEx(String& value, String& out);
 		bool        ParseTypeIRI(String& value, std::weak_ptr<Element>* ref);
+		bool        ParseTypeIRI(String& value, Paint* ref);
 		bool        ParseTypeIRIUse(String& value, std::string& out);
-		void        ParseTypePaint(String& value, std::weak_ptr<Element>* ref);
+		void        ParseTypePaint(String& value, Paint& out);
 		float       ParseTypeAngle(String& value);
 		Matrix      ParseTypeTransform(String& value);
 		std::string ParseTypeString(String& value);
@@ -298,8 +294,8 @@ namespace Svg
 		Document* m_doc = nullptr;
 		RefContainer m_IriRef;
 		std::vector<UseElement*> m_UseRef;
-		const char* m_currentElement;
-		const char* m_currentAttribute;
+		const char* m_currentElement = nullptr;
+		const char* m_currentAttribute = nullptr;
 
 		std::function<void(const ParserErrorData&)> m_errorCallback;
 		std::function<void(Parser<Ch>&, const std::basic_string<Ch>&)> m_XMLCallback;
@@ -318,50 +314,13 @@ namespace Svg
 		std::string GetUTF8String() const;
 		size_t size() const { return end - ptr; }
 
-		static bool Compare(const Ch* left, const char* right, size_t count)
-		{
-			char diff = 0;
-			size_t i = 0;
-			if (count == 0)
-				return true;
+		static bool Compare(const Ch* left, const char* right, size_t count);
+		bool Compare(const String& right);
+		bool Compare(const char* right, size_t count);
+		
 
-			for (; i < count && right[i] != '\0'; i++)
-				diff |= left[i] ^ right[i];
-
-			if (i < count)
-				return true;
-
-			char ch = right[i];
-			if (ch != '\0' && !IS_SPACE(ch))
-				return true;
-
-			return !(diff == 0 || diff == 32);
-		}
-
-		bool Compare(const String& right)
-		{
-			char diff = 0;
-			size_t length = size();
-			if (length == 0 || length >= right.size())
-				return true;
-
-			for (size_t i = 0; i < length; i++)
-				diff |= ptr[i] ^ right[i];
-
-			return !(diff == 0 || diff == 32);
-		}
-
-		bool Compare(const char* right, size_t count)
-		{
-			if (count == 0 || count > size())
-				return true;
-			return Compare(ptr, right, count);
-		}
-
-		bool Compare(const char* right)
-		{
-			return Compare(right, size());
-		}
+		bool Compare(const char* right) { return Compare(right, size()); }
+		
 
 		operator const std::basic_string<Ch>() const { return std::basic_string<Ch>(ptr, end - ptr); }
 		operator const Ch* () const { return ptr; }

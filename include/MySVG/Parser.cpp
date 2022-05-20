@@ -6,6 +6,10 @@
 #include "Rapidxml.h"
 #endif
 
+#define IS_NUMBER(ch) ((bool) (ch >= '0' && ch <= '9'))
+#define IS_SPACE(ch) ((bool) (ch == ' ' || (ch >= 9 && ch <= 13)))
+#define DECIMAL_POINT '.'
+
 #define SKIP_CHARACTERS(str, expr) while((str.ptr < str.end) && (expr)) ++str
 #define SKIP_CHARACTERS_UNTIL(str, expr) SKIP_CHARACTERS(str, !(expr))
 
@@ -97,23 +101,20 @@ namespace Svg
 	}
 
 	template<typename Ch>
-	bool Parser<Ch>::ParseTypeIRIEx(String& value, std::weak_ptr<Element>* ref, bool NeedBrackets, RefContainer& where)
+	bool Parser<Ch>::ParseTypeIRIEx(String& value, String& out)
 	{
 		SKIP_WHITESPACE(value);
 
-		if ((NeedBrackets == false) || value.Compare("url", 3) == 0)
+		if (value.Compare("url", 3) == 0)
 		{
 			SKIP_CHARACTERS_UNTIL(value, *value.ptr == '#');
 			++value;
 
 			if (value < value.end)
 			{
-				String id;
-				id.ptr = value;
+				out.ptr = value;
 				SKIP_CHARACTERS_UNTIL(value, IS_SPACE(*value.ptr) || *value.ptr == ')');
-				id.end = value;
-
-				where.emplace_back(std::make_pair(std::string(id.GetUTF8String()), ref));
+				out.end = value;
 				return true;
 			}
 		}
@@ -123,7 +124,26 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseTypeIRI(String& value, std::weak_ptr<Element>* ref)
 	{
-		return ParseTypeIRIEx(value, ref, true, m_IriRef);
+		String id;
+		if (ParseTypeIRIEx(value, id))
+		{
+			m_IriRef.emplace_back(std::make_pair(std::string(id.GetUTF8String()), ref));
+			return true;
+		}
+		return false;
+	}
+
+	template<typename Ch>
+	bool Parser<Ch>::ParseTypeIRI(String& value, Paint* ref)
+	{
+		String id;
+		if (ParseTypeIRIEx(value, id))
+		{
+			ref->SetIri(nullptr);
+			m_IriRef.emplace_back(std::make_pair(std::string(id.GetUTF8String()), &ref->GetIri()));
+			return true;
+		}
+		return false;
 	}
 
 	template<typename Ch>
@@ -374,15 +394,16 @@ namespace Svg
 	}
 
 	template<typename Ch>
-	void Parser<Ch>::ParseTypePaint(String& value, std::weak_ptr<Element>* ref)
+	void Parser<Ch>::ParseTypePaint(String& value, Paint& out)
 	{
-		if (!ParseTypeIRI(value, ref))
+		if (!ParseTypeIRI(value, &out))
 		{
-			ColorElement col;
+			Color col;
 			if (ParseTypeColor(value, col) == false)
-				*ref = m_doc->refs.Add(std::make_shared<ColorElement>(col));
+				out.SetColor(col);
 		}
 	}
+
 	template<typename Ch>
 	inline float Parser<Ch>::ParseTypeAngle(String& value)
 	{
@@ -451,23 +472,23 @@ namespace Svg
 				float data[3];
 				uint32_t procCount = ParseTypeNumberList(value, 3, data);
 				if (procCount == 3)
-					out.Rotate(data[0], data[1], data[2]);
+					out.Rotate(ToRadians(data[0]), data[1], data[2]);
 				else if (procCount == 1)
-					out.Rotate(data[0]);
+					out.Rotate(ToRadians(data[0]));
 			}
 			else if (String::Compare(start, "skewX", count) == 0)
 			{
 				float data;
 				uint32_t procCount = ParseTypeNumberList(value, 1, &data);
 				if (procCount == 1)
-					out.Skew(data, 0);
+					out.Skew(ToRadians(data), 0);
 			}
 			else if (String::Compare(start, "skewY", count) == 0)
 			{
 				float data;
 				uint32_t procCount = ParseTypeNumberList(value, 1, &data);
 				if (procCount == 1)
-					out.Skew(0, data);
+					out.Skew(0, ToRadians(data));
 			}
 			else
 			{
@@ -1105,7 +1126,7 @@ namespace Svg
 	bool Parser<Ch>::ParseCoreAttributes(String& name, String& value, Element* element)
 	{
 		
-		if (ParseAttribute(name, "id"))
+		if (CompareAttribute(name, "id"))
 			element->SetID(value.GetUTF8String());
 		else return false;
 		return true;
@@ -1114,11 +1135,11 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseFillAttributes(String& name, String& value, FillProperties* fill)
 	{
-		if (ParseAttribute(name, "fill"))
-			ParseTypePaint(value, &fill->data);
-		else if (ParseAttribute(name, "fill-rule"))
+		if (CompareAttribute(name, "fill"))
+			ParseTypePaint(value, fill->paint);
+		else if (CompareAttribute(name, "fill-rule"))
 			ParseAttributeFillRule(value, fill->rule);
-		else if (ParseAttribute(name, "fill-opacity"))
+		else if (CompareAttribute(name, "fill-opacity"))
 			ParseTypeColorAlpha(value, fill->opacity);
 		else return false;
 		return true;
@@ -1127,21 +1148,21 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseStrokeAttributes(String& name, String& value, StrokeProperties* stroke)
 	{
-		if (ParseAttribute(name, "stroke"))
-			ParseTypePaint(value, &stroke->data);
-		else if (ParseAttribute(name, "stroke-opacity"))
+		if (CompareAttribute(name, "stroke"))
+			ParseTypePaint(value, stroke->paint);
+		else if (CompareAttribute(name, "stroke-opacity"))
 			ParseTypeColorAlpha(value, stroke->opacity);
-		else if (ParseAttribute(name, "stroke-width"))
+		else if (CompareAttribute(name, "stroke-width"))
 			ParseTypeLength(value, stroke->width);
-		else if (ParseAttribute(name, "stroke-linecap"))
+		else if (CompareAttribute(name, "stroke-linecap"))
 			ParseAttributeStrokeLinecap(value, stroke->linecap);
-		else if (ParseAttribute(name, "stroke-linejoin"))
+		else if (CompareAttribute(name, "stroke-linejoin"))
 			ParseAttributeStrokeLinejoin(value, stroke->linejoin);
-		else if (ParseAttribute(name, "stroke-miterlimit"))
+		else if (CompareAttribute(name, "stroke-miterlimit"))
 			stroke->miterlimit = ParseTypeNumber(value);
-		else if (ParseAttribute(name, "stroke-dasharray"))
+		else if (CompareAttribute(name, "stroke-dasharray"))
 			ParseAttributeStrokeDasharray(value, stroke->dashArray);
-		else if (ParseAttribute(name, "stroke-dashoffset"))
+		else if (CompareAttribute(name, "stroke-dashoffset"))
 			ParseTypeLength(value, stroke->dashoffset);
 		else return false;
 		return true;
@@ -1150,11 +1171,11 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseRenderingAttributes(String& name, String& value, RenderingProperties* rendering)
 	{
-		if (ParseAttribute(name, "color-interpolation"))
+		if (CompareAttribute(name, "color-interpolation"))
 			ParseAttributeColorInterpolation(value, rendering->colorInterpolation);
-		else if (ParseAttribute(name, "color-interpolation-filters"))
+		else if (CompareAttribute(name, "color-interpolation-filters"))
 			ParseAttributeColorInterpolation(value, rendering->colorInterpolationFilter);
-		else if (ParseAttribute(name, "color-rendering"))
+		else if (CompareAttribute(name, "color-rendering"))
 			ParseAttributeColorRendering(value, rendering->color);
 		else return false;
 		return true;
@@ -1163,15 +1184,15 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseVisualAttributes(String& name, String& value, VisualProperties* visual)
 	{
-        if (ParseAttribute(name, "visibility"))
+        if (CompareAttribute(name, "visibility"))
 			ParseAttributeVisibility(value, visual->visibility);
-		else if (ParseAttribute(name, "display"))
+		else if (CompareAttribute(name, "display"))
 			ParseAttributeDisplay(value, visual->display);
-		else if (ParseAttribute(name, "overflow"))
+		else if (CompareAttribute(name, "overflow"))
 			ParseAttributeOverflow(value, visual->overflow);
-		else if (ParseAttribute(name, "cursor"))
+		else if (CompareAttribute(name, "cursor"))
 			ParseAttributeCursor(value, visual->cursor);
-		else if (ParseAttribute(name, "opacity"))
+		else if (CompareAttribute(name, "opacity"))
 			ParseTypeColorAlpha(value, visual->opacity);
 		return false;
 	}
@@ -1185,7 +1206,7 @@ namespace Svg
 		   if (!ParseMarkersAttributes(name, value, &style->marker))
 		    if (!ParseRenderingAttributes(name, value, &style->rendering))
 		    {
-				if (ParseAttribute(name, "style"))
+				if (CompareAttribute(name, "style"))
 				{
 					if (processStyleName)
 						ParseAttributeStyle(value, style);
@@ -1198,11 +1219,11 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseMarkersAttributes(String& name, String& value, MarkerProperties* marker)
 	{
-		if (ParseAttribute(name, "marker-start"))
+		if (CompareAttribute(name, "marker-start"))
 			ParseTypeIRI(value, &marker->start);
-		else if (ParseAttribute(name, "marker-mid"))
+		else if (CompareAttribute(name, "marker-mid"))
 			ParseTypeIRI(value, &marker->middle);
-		else if (ParseAttribute(name, "marker-end"))
+		else if (CompareAttribute(name, "marker-end"))
 			ParseTypeIRI(value, &marker->end);
 		else return false;
 		return true;
@@ -1211,19 +1232,19 @@ namespace Svg
 	template<typename Ch>
 	bool Parser<Ch>::ParseFontAttributes(String& name, String& value, Style* font)
 	{
-		if (ParseAttribute(name, "font"))
+		if (CompareAttribute(name, "font"))
 			ParseAttributeFont(value, font);
-		else if (ParseAttribute(name, "font-family"))
+		else if (CompareAttribute(name, "font-family"))
 			ParseAttributeFontFamily(value, font->font.family);
-		else if (ParseAttribute(name, "font-size"))
+		else if (CompareAttribute(name, "font-size"))
 			ParseTypeLength(value, font->font.size);
-		else if (ParseAttribute(name, "font-weight"))
+		else if (CompareAttribute(name, "font-weight"))
 			ParseAttributeFontWeight(value, font->font.weight);
-		else if (ParseAttribute(name, "font-style"))
+		else if (CompareAttribute(name, "font-style"))
 			ParseAttributeFontStyle(value, font->font.style);
-		else if (ParseAttribute(name, "font-stretch"))
+		else if (CompareAttribute(name, "font-stretch"))
 			ParseAttributeFontStretch(value, font->font.stretch);
-		else if (ParseAttribute(name, "font-variant"))
+		else if (CompareAttribute(name, "font-variant"))
 			ParseAttributeFontVariant(value, font->font.variant);
 		else return false;
 		return true;
@@ -1241,19 +1262,19 @@ namespace Svg
 			String name = attr.name;
 			String value = attr.value;
 
-			if (ParseAttribute(name, "offset"))
+			if (CompareAttribute(name, "offset"))
 			{
 				Length tmp;
 				if (ParseTypeNumberAndPercentage(value, tmp) == 0)
 					parent->stops[idx].offset = tmp;
 			}
-			else if (ParseAttribute(name, "stop-color"))
+			else if (CompareAttribute(name, "stop-color"))
 			{
 				Color col;
 				if(ParseTypeColor(value, col) == false)
 					parent->stops[idx].color = col;
 			}
-			else if (ParseAttribute(name, "stop-opacity"))
+			else if (CompareAttribute(name, "stop-opacity"))
 			{
 				//TODO
 				float tmp = parent->stops[idx].color.a;
@@ -1281,23 +1302,23 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, rad->GetStyle())) continue;
 
-			if (ParseAttribute(name, "cx"))
+			if (CompareAttribute(name, "cx"))
 				ParseTypeLength(value, rad->cx);
-			else if (ParseAttribute(name, "cy"))
+			else if (CompareAttribute(name, "cy"))
 				ParseTypeLength(value, rad->cy);
-			else if (ParseAttribute(name, "r"))
+			else if (CompareAttribute(name, "r"))
 				ParseTypeLength(value, rad->r);
-			else if (ParseAttribute(name, "fx"))
+			else if (CompareAttribute(name, "fx"))
 				ParseTypeLength(value, rad->fx);
-			else if (ParseAttribute(name, "fy"))
+			else if (CompareAttribute(name, "fy"))
 				ParseTypeLength(value, rad->fy);
-			else if (ParseAttribute(name, "fr"))
+			else if (CompareAttribute(name, "fr"))
 				ParseTypeLength(value, rad->fr);
-			else if (ParseAttribute(name, "spreadMethod"))
+			else if (CompareAttribute(name, "spreadMethod"))
 				ParseAttributeSpreadMethod(value, rad->spread);
-			else if (ParseAttribute(name, "gradientUnits"))
+			else if (CompareAttribute(name, "gradientUnits"))
 				ParseAttributeUnits(value, rad->unit);
-			else if (ParseAttribute(name, "gradientTransform"))
+			else if (CompareAttribute(name, "gradientTransform"))
 			{/*TODO*/
 			}
 			
@@ -1318,19 +1339,19 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, lin->GetStyle())) continue;
 
-			if (ParseAttribute(name, "x1"))
+			if (CompareAttribute(name, "x1"))
 				ParseTypeLength(value, lin->x1);
-			else if (ParseAttribute(name, "x2"))
+			else if (CompareAttribute(name, "x2"))
 				ParseTypeLength(value, lin->x2);
-			else if (ParseAttribute(name, "y1"))
+			else if (CompareAttribute(name, "y1"))
 				ParseTypeLength(value, lin->y1);
-			else if (ParseAttribute(name, "y2"))
+			else if (CompareAttribute(name, "y2"))
 				ParseTypeLength(value, lin->y2);
-			else if (ParseAttribute(name, "spreadMethod"))
+			else if (CompareAttribute(name, "spreadMethod"))
 				ParseAttributeSpreadMethod(value, lin->spread);
-			else if (ParseAttribute(name, "gradientUnits"))
+			else if (CompareAttribute(name, "gradientUnits"))
 				ParseAttributeUnits(value, lin->unit);
-			else if(ParseAttribute(name, "gradientTransform"))
+			else if(CompareAttribute(name, "gradientTransform"))
 			{/*TODO*/ }
 		}
 	}
@@ -1350,17 +1371,17 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, svg->GetStyle())) continue;
 
-			if (ParseAttribute(name, "x"))
+			if (CompareAttribute(name, "x"))
 				ParseTypeLength(value, svg->x);
-			else if (ParseAttribute(name, "y"))
+			else if (CompareAttribute(name, "y"))
 				ParseTypeLength(value, svg->y);
-			else if (ParseAttribute(name, "width"))
+			else if (CompareAttribute(name, "width"))
 				ParseTypeLength(value, svg->width);
-			else if (ParseAttribute(name, "height"))
+			else if (CompareAttribute(name, "height"))
 				ParseTypeLength(value, svg->height);
-			else if (ParseAttribute(name, "viewBox"))
+			else if (CompareAttribute(name, "viewBox"))
 				ParseAttributeViewbox(value, svg->viewbox);
-			else if (ParseAttribute(name, "preserveAspectRatio"))
+			else if (CompareAttribute(name, "preserveAspectRatio"))
 				ParseAttributePreserveAspectRatio(value, svg->preserveAspectRatio);
 		}
 
@@ -1382,7 +1403,7 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, g->GetStyle())) continue;
 
-			if (ParseAttribute(name, "transform"))
+			if (CompareAttribute(name, "transform"))
 			{
 				Matrix buffer = ParseTypeTransform(value);
 				buffer.PostTransform(g->GetTransform());
@@ -1406,15 +1427,15 @@ namespace Svg
 			if ((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, use->GetStyle())) continue;
 
-			if (ParseAttribute(name, "href"))
+			if (CompareAttribute(name, "href"))
 				ParseTypeIRIUse(value, use->href);
-			else if (ParseAttribute(name, "x"))
+			else if (CompareAttribute(name, "x"))
 				ParseTypeLength(value, use->x);
-			else if (ParseAttribute(name, "y"))
+			else if (CompareAttribute(name, "y"))
 				ParseTypeLength(value, use->y);
-			else if (ParseAttribute(name, "width"))
+			else if (CompareAttribute(name, "width"))
 				ParseTypeLength(value, use->width);
-			else if (ParseAttribute(name, "height"))
+			else if (CompareAttribute(name, "height"))
 				ParseTypeLength(value, use->height);
 		}
 
@@ -1436,19 +1457,19 @@ namespace Svg
 			if ((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, image->GetStyle())) continue;
 
-			if (ParseAttribute(name, "x"))
+			if (CompareAttribute(name, "x"))
 				ParseTypeLength(value, image->x);
-			else if (ParseAttribute(name, "y"))
+			else if (CompareAttribute(name, "y"))
 				ParseTypeLength(value, image->y);
-			else if (ParseAttribute(name, "width"))
+			else if (CompareAttribute(name, "width"))
 				ParseTypeLength(value, image->width);
-			else if (ParseAttribute(name, "height"))
+			else if (CompareAttribute(name, "height"))
 				ParseTypeLength(value, image->height);
-			else if (ParseAttribute(name, "href"))
+			else if (CompareAttribute(name, "href"))
 				image->resource = ParseTypeResource(value, ExpectedResource::IMAGE);
-			else if (ParseAttribute(name, "preserveAspectRatio"))
+			else if (CompareAttribute(name, "preserveAspectRatio"))
 				ParseAttributePreserveAspectRatio(value, image->preserveAspectRatio);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				image->SetTransform(*image->GetTransform() * ParseTypeTransform(value));
 		}
 	}
@@ -1467,21 +1488,21 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, marker->GetStyle())) continue;
 
-			if (ParseAttribute(name, "refX"))
+			if (CompareAttribute(name, "refX"))
 				ParseTypeLength(value, marker->refX);
-			else if (ParseAttribute(name, "refY"))
+			else if (CompareAttribute(name, "refY"))
 				ParseTypeLength(value, marker->refY);
-			else if (ParseAttribute(name, "markerUnits"))
+			else if (CompareAttribute(name, "markerUnits"))
 				ParseAttributeMarkerUnits(value, marker->unit);
-			else if (ParseAttribute(name, "markerWidth"))
+			else if (CompareAttribute(name, "markerWidth"))
 				ParseTypeLength(value, marker->width);
-			else if (ParseAttribute(name, "markerHeight"))
+			else if (CompareAttribute(name, "markerHeight"))
 				ParseTypeLength(value, marker->height);
-			else if (ParseAttribute(name, "viewBox"))
+			else if (CompareAttribute(name, "viewBox"))
 				ParseAttributeViewbox(value, marker->viewbox);
-			else if (ParseAttribute(name, "orient"))
+			else if (CompareAttribute(name, "orient"))
 				ParseAttributeOrient(value, marker->orient);
-			else if (ParseAttribute(name, "preserveAspectRatio"))
+			else if (CompareAttribute(name, "preserveAspectRatio"))
 				ParseAttributePreserveAspectRatio(value, marker->preserveAspectRatio);
 		}
 	}
@@ -1500,19 +1521,19 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, rect->GetStyle())) continue;
 
-			if (ParseAttribute(name, "x"))
+			if (CompareAttribute(name, "x"))
 				ParseTypeLength(value, rect->x);
-			else if (ParseAttribute(name, "y"))
+			else if (CompareAttribute(name, "y"))
 				ParseTypeLength(value, rect->y);
-			else if (ParseAttribute(name, "rx"))
+			else if (CompareAttribute(name, "rx"))
 				ParseTypeLength(value, rect->rx);
-			else if (ParseAttribute(name, "ry"))
+			else if (CompareAttribute(name, "ry"))
 				ParseTypeLength(value, rect->ry);
-			else if (ParseAttribute(name, "width"))
+			else if (CompareAttribute(name, "width"))
 				ParseTypeLength(value, rect->width);
-			else if (ParseAttribute(name, "height"))
+			else if (CompareAttribute(name, "height"))
 				ParseTypeLength(value, rect->height);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				rect->SetTransform(*rect->GetTransform() *  ParseTypeTransform(value));
 		}
 
@@ -1533,13 +1554,13 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, circle->GetStyle())) continue;
 
-			if (ParseAttribute(name, "cx"))
+			if (CompareAttribute(name, "cx"))
 				ParseTypeLength(value, circle->cx);
-			else if (ParseAttribute(name, "cy"))
+			else if (CompareAttribute(name, "cy"))
 				ParseTypeLength(value, circle->cy);
-			else if (ParseAttribute(name, "r"))
+			else if (CompareAttribute(name, "r"))
 				ParseTypeLength(value, circle->r);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				circle->GetTransform()->PostTransform(ParseTypeTransform(value));
 		}
 	}
@@ -1558,15 +1579,15 @@ namespace Svg
 			if ((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, ellipse->GetStyle())) continue;
 
-			if (ParseAttribute(name, "cx"))
+			if (CompareAttribute(name, "cx"))
 				ParseTypeLength(value, ellipse->cx);
-			else if (ParseAttribute(name, "cy"))
+			else if (CompareAttribute(name, "cy"))
 				ParseTypeLength(value, ellipse->cy);
-			else if (ParseAttribute(name, "rx"))
+			else if (CompareAttribute(name, "rx"))
 				ParseTypeLength(value, ellipse->rx);
-			else if (ParseAttribute(name, "ry"))
+			else if (CompareAttribute(name, "ry"))
 				ParseTypeLength(value, ellipse->ry);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				ellipse->GetTransform()->PostTransform(ParseTypeTransform(value));
 		}
 	}
@@ -1580,7 +1601,7 @@ namespace Svg
 			String value = attr.value;
 
 			TRIM_STRING(value);
-			if (ParseAttribute(name, "d"))
+			if (CompareAttribute(name, "d"))
 			{
 				ParseAttributeD(value, path);
 				continue;
@@ -1590,9 +1611,9 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, path->GetStyle())) continue;
 
-			if (ParseAttribute(name, "pathLength"))
+			if (CompareAttribute(name, "pathLength"))
 				path->pathLength = (uint32_t) ParseTypeNumber(value);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				path->GetTransform()->PostTransform(ParseTypeTransform(value));
 		}
 	}
@@ -1615,15 +1636,15 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, path->GetStyle())) continue;
 			
-			if (ParseAttribute(name, "x1"))
+			if (CompareAttribute(name, "x1"))
 				ParseTypeLength(value, x[0]);
-			else if (ParseAttribute(name, "y1"))
+			else if (CompareAttribute(name, "y1"))
 				ParseTypeLength(value, y[0]);
-			else if (ParseAttribute(name, "x2"))
+			else if (CompareAttribute(name, "x2"))
 				ParseTypeLength(value, x[1]);
-			else if (ParseAttribute(name, "y2"))
+			else if (CompareAttribute(name, "y2"))
 				ParseTypeLength(value, y[1]);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				path->GetTransform()->PostTransform(ParseTypeTransform(value));
 		}
 		
@@ -1650,11 +1671,11 @@ namespace Svg
 			if((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, polyline->GetStyle())) continue;
 
-			if (ParseAttribute(name, "points"))
+			if (CompareAttribute(name, "points"))
 				ParseAttributePoints(value, polyline);
-			else if (ParseAttribute(name, "pathLength"))
+			else if (CompareAttribute(name, "pathLength"))
 				polyline->pathLength = (uint32_t) ParseTypeNumber(value);
-			else if (ParseAttribute(name, "transform"))
+			else if (CompareAttribute(name, "transform"))
 				polyline->GetTransform()->PostTransform(ParseTypeTransform(value));
 		}
 	}
@@ -1673,7 +1694,7 @@ namespace Svg
 			if ((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, polygon->GetStyle())) continue;
 
-			if (ParseAttribute(name, "points"))
+			if (CompareAttribute(name, "points"))
 			{
 				ParseAttributePoints(value, polygon);
 				if (!polygon->empty())
@@ -1682,7 +1703,7 @@ namespace Svg
 						polygon->ClosePath();
 				}
 			}
-			else if (ParseAttribute(name, "tranform"))
+			else if (CompareAttribute(name, "tranform"))
 				polygon->GetTransform()->PostTransform(ParseTypeTransform(value));
 		}
 	}
@@ -1701,23 +1722,23 @@ namespace Svg
 			if ((bool)(m_flags & Flag::Load::STYLE))
 				if (ParsePresentationAttributes(name, value, pattern->GetStyle())) continue;
 	
-			if (ParseAttribute(name, "x"))
+			if (CompareAttribute(name, "x"))
 				ParseTypeLength(value, pattern->x);
-			else if (ParseAttribute(name, "y"))
+			else if (CompareAttribute(name, "y"))
 				ParseTypeLength(value, pattern->y);
-			else if (ParseAttribute(name, "width"))
+			else if (CompareAttribute(name, "width"))
 				ParseTypeLength(value, pattern->width);
-			else if (ParseAttribute(name, "height"))
+			else if (CompareAttribute(name, "height"))
 				ParseTypeLength(value, pattern->height);
-			else if (ParseAttribute(name, "viewBox"))
+			else if (CompareAttribute(name, "viewBox"))
 				ParseAttributeViewbox(value, pattern->viewbox);
-			else if (ParseAttribute(name, "patternUnits"))
+			else if (CompareAttribute(name, "patternUnits"))
 				ParseAttributeUnits(value, pattern->unit);
-			else if (ParseAttribute(name, "patternContentUnits"))
+			else if (CompareAttribute(name, "patternContentUnits"))
 				ParseAttributeUnits(value, pattern->contentUnit);
-			else if (ParseAttribute(name, "patternTransform"))
+			else if (CompareAttribute(name, "patternTransform"))
 				pattern->GetTransform()->PostTransform(ParseTypeTransform(value));
-			else if (ParseAttribute(name, "preserveAspectRatio"))
+			else if (CompareAttribute(name, "preserveAspectRatio"))
 				ParseAttributePreserveAspectRatio(value, pattern->preserveAspectRatio);
 		}
 
@@ -1756,7 +1777,7 @@ namespace Svg
 	}
 
 	template<typename Ch>
-	bool Parser<Ch>::ParseAttribute(String& name, const char* attribute)
+	bool Parser<Ch>::CompareAttribute(String& name, const char* attribute)
 	{
 		if (name.Compare(attribute) == 0)
 		{
@@ -2045,6 +2066,49 @@ namespace Svg
 		}
 
 		return out;
+	}
+
+	template<typename Ch>
+	bool String<Ch>::Compare(const Ch* left, const char* right, size_t count)
+	{
+		char diff = 0;
+		size_t i = 0;
+		if (count == 0)
+			return true;
+
+		for (; i < count && right[i] != '\0'; i++)
+			diff |= left[i] ^ right[i];
+
+		if (i < count)
+			return true;
+
+		char ch = right[i];
+		if (ch != '\0' && !IS_SPACE(ch))
+			return true;
+
+		return !(diff == 0 || diff == 32);
+	}
+
+	template<typename Ch>
+	bool String<Ch>::Compare(const String& right)
+	{
+		char diff = 0;
+		size_t length = size();
+		if (length == 0 || length >= right.size())
+			return true;
+
+		for (size_t i = 0; i < length; i++)
+			diff |= ptr[i] ^ right[i];
+
+		return !(diff == 0 || diff == 32);
+	}
+
+	template<typename Ch>
+	bool String<Ch>::Compare(const char* right, size_t count)
+	{
+		if (count == 0 || count > size())
+			return true;
+		return Compare(ptr, right, count);
 	}
 
 }

@@ -36,8 +36,7 @@ rect->y = 100;
 rect->width  = 300;
 rect->height = 300;
 
-auto color = doc.refs.Make<ColorElement>(255, 0, 0);
-rect->GetStyle()->fill.data = color;
+rect->GetStyle()->fill.paint.SetColor(Svg::Color(255, 0, 0));
 ```
 
 The code above is equivalent to this svg file

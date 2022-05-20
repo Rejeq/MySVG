@@ -184,6 +184,7 @@ namespace Svg
 			Point p3[3];
 		};
 
+		PathData() : command(PathCommand::CLOSE) {}
 		PathData(const PathCommand command) : command(command) {}
 
 		PathData(const PathCommand command, const Point& point) : command(command), p1(point) {}
@@ -206,6 +207,23 @@ namespace Svg
 		PathData(const PathCommand command, float x, float y, float x2, float y2, float x3, float y3)
 		{
 			PathData(command, Point(x, y), Point(x2, y2), Point(x3, y3));
+		}
+
+		Point GetLastPoint() const
+		{
+			switch (command)
+			{
+			case PathCommand::CLOSE:
+			case PathCommand::MOVE:
+			case PathCommand::LINE:
+				return p1;
+				break;
+			case PathCommand::CURVE:
+				return p3[2];
+				break;
+			default: break;
+			}
+			return Point();
 		}
 	};
 
@@ -413,9 +431,30 @@ namespace Svg
 		ElementContainer* GetGroup() const override { return (ElementContainer*)this; }
 		Stylable* GetStylable() const override { return (Stylable*) this; }
 		Transformable* GetTransformable() const override { return (Transformable*)this; }
-		float GetWidth() const override { return ComputeWidth(); }
-		float GetHeight() const override { return ComputeHeight(); }
-		Rect GetBoundingBox() const override { return Rect((float)viewbox.x, (float)viewbox.y, (float)viewbox.w, (float)viewbox.h); }
+		float GetWidth()  const override { return (viewbox.w == -1) ? ComputeWidth() : viewbox.w; }
+		float GetHeight() const override { return (viewbox.h == -1) ? ComputeHeight() : viewbox.h; }
+		Rect GetBoundingBox() const override { return Rect(viewbox.x, viewbox.y, GetWidth(), GetHeight()); }
+
+		/*
+		* Return the transformation matrix
+		*/
+		Matrix ComputeTransform(Point point, float strokeWidth, float angle)
+		{
+			Matrix out;
+
+			float width = ComputeWidth();
+			float height = ComputeHeight();
+			float translateX = point.x - ComputeRefX() + (width / 2.0f);
+			float translateY = point.y - ComputeRefY() + (height / 2.0f);
+			
+
+			preserveAspectRatio.ApplyTransform(width, height, GetBoundingBox(), &out);
+			out.PostTranslate(translateX, translateY);
+			out.Scale(strokeWidth, strokeWidth);
+			out.Rotate(angle);
+			
+			return out;
+		}
 	};
 
 	/*
@@ -451,7 +490,7 @@ namespace Svg
 		Rect GetBoundingBox() const override { return Rect(ComputeX(), ComputeY(), ComputeWidth(), ComputeHeight()); };
 
 		/*
-		* Updates the transformation matrix
+		* Return the transformation matrix
 		*/
 		Matrix ComputeTransform(Rect viewbox)
 		{
@@ -650,11 +689,6 @@ namespace Svg
 			: Element(ElementType::PATH, parent), Stylable(), Transformable() {}
 		PathElement(const ElementType type, Element* parent = nullptr)
 			: Element(type, parent), Stylable(), Transformable() {}
-
-		PathElement(std::initializer_list<PathData>& data, Element* parent = nullptr)
-			: Element(ElementType::PATH, parent), Stylable(), Transformable() {
-			Add(data);
-		}
 		PathElement(RectElement* rect, Element* parent = nullptr)
 			: Element(ElementType::PATH, parent), Stylable(), Transformable() {
 			FromRect(this, rect);
@@ -681,16 +715,6 @@ namespace Svg
 		float GetWidth() const override { return m_bbox.w - m_bbox.x; }
 		float GetHeight() const override { return m_bbox.h - m_bbox.y; }
 		Rect GetBoundingBox() const override { return Rect(m_bbox.x, m_bbox.y, GetWidth(), GetHeight()); }
-
-		//Bug: bbox and positions not updated
-		void Add(std::initializer_list<PathData>&  newData) { m_data.insert(m_data.end(), newData.begin(), newData.end()); }
-		void Add(std::vector<PathData>& newData) { m_data.insert(m_data.end(), newData.begin(), newData.end()); }
-		void Add(const PathData& newData) { m_data.insert(m_data.end(), newData); }
-
-
-		void Set(std::initializer_list<PathData>&  newData) { m_data.clear(); Add(newData); }
-		void Set(std::vector<PathData>& newData) { m_data.clear(); Add(newData); }
-		void Set(const PathData& newData) { m_data.clear(); Add(newData); }
 
 		bool empty() const { return m_data.empty(); }
 		inline size_t size() const { return m_data.size(); }

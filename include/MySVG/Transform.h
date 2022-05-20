@@ -94,8 +94,8 @@ namespace Svg
 
 		void Skew(const double x, const double y)
 		{
-			const double tanX = std::tan(ToRadians(x));
-			const double tanY = std::tan(ToRadians(y));
+			const double tanX = std::tan(x);
+			const double tanY = std::tan(y);
 
 			double b00 = tanY * m10;
 			double b01 = tanY * m11;
@@ -109,8 +109,8 @@ namespace Svg
 
 		void Rotate(const double angle)
 		{
-			double sn = std::sin(ToRadians(angle));
-			double cs = std::cos(ToRadians(angle));
+			double sn = std::sin(angle);
+			double cs = std::cos(angle);
 
 			double b00 = sn * m10 + cs * m00;
 			double b01 = sn * m11 + cs * m01;
@@ -123,8 +123,8 @@ namespace Svg
 
 		void Rotate(const double angle, const double cx, const double cy)
 		{
-			double sin = std::sin(ToRadians(angle));
-			double cos = std::cos(ToRadians(angle));
+			double sin = std::sin(angle);
+			double cos = std::cos(angle);
 
 			double b00 = sin * m10 + cos * m00;
 			double b01 = sin * m11 + cos * m01;
@@ -193,7 +193,7 @@ namespace Svg
 
 		inline void PostSkewX(const double x)
 		{
-			const double tn = std::tan(ToRadians(x));
+			const double tn = std::tan(x);
 
 			m00 += m01 * tn;
 			m10 += m11 * tn;
@@ -202,7 +202,7 @@ namespace Svg
 
 		inline void PostSkewY(const double y)
 		{
-			const double tn = std::tan(ToRadians(y));
+			const double tn = std::tan(y);
 
 			m01 += m00 * tn;
 			m11 += m10 * tn;
@@ -211,8 +211,8 @@ namespace Svg
 		
 		void PostSkew(const double x, const double y)
 		{
-			const double xtn = std::tan(ToRadians(x));
-			const double ytn = std::tan(ToRadians(y));
+			const double xtn = std::tan(x);
+			const double ytn = std::tan(y);
 
 			const double b00 = m01 * xtn;
 			const double b10 = m11 * xtn;
@@ -229,8 +229,8 @@ namespace Svg
 
 		void PostRotate(const double angle)
 		{
-			double sn = std::sin(ToRadians(angle));
-			double cs = std::cos(ToRadians(angle));
+			double sn = std::sin(angle);
+			double cs = std::cos(angle);
 
 			double b00 = m00 * cs - m01 * sn;
 			double b01 = m00 * sn + m01 * cs;
@@ -244,8 +244,8 @@ namespace Svg
 
 		void PostRotate(const double angle, const double cx, const double cy)
 		{
-			double sn = std::sin(ToRadians(angle));
-			double cs = std::cos(ToRadians(angle));
+			double sn = std::sin(angle);
+			double cs = std::cos(angle);
 
 			double b00 = m00 * cs - m01 * sn;
 			double b01 = m00 * sn + m01 * cs;

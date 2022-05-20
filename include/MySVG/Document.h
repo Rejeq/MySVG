@@ -326,7 +326,6 @@ namespace Svg
 		}
 	};
 
-
 	struct Color
 	{
 		uint8_t r, g, b, a;
@@ -342,17 +341,6 @@ namespace Svg
 				a == rv.a);
 		}
 		bool operator!=(const Color& rv) const { return !(*this == rv); }
-	};
-
-	class ColorElement : public Element, public Color
-	{
-	public:
-		ColorElement(uint8_t r = 0, uint8_t g = 0, uint8_t b = 0, uint8_t a = 255) :
-			Element(ElementType::COLOR), Color(r, g, b, a) {}
-
-		ColorElement(Color&& col) :
-			Element(ElementType::COLOR), Color(col) {}
-		virtual ~ColorElement() = default;
 	};
 
 	constexpr double GetPI()

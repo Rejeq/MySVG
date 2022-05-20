@@ -204,6 +204,85 @@ namespace Svg
 		AUTO,
 	};
 
+	enum class PaintType
+	{
+		NONE,
+		COLOR,
+		IRI,
+	};
+
+	struct Paint
+	{
+		bool IsColor()   const { return (m_type == PaintType::COLOR); }
+		bool IsIri()     const { return (m_type == PaintType::IRI); }
+		bool IsDefined() const { return (m_type != PaintType::NONE); }
+		PaintType GetType() const { return m_type; }
+
+		void SetColor(const Color& color)
+		{
+			m_color = color;
+			m_type = PaintType::COLOR;
+		}
+
+		void SetIri(nullptr_t) { m_type = PaintType::IRI; }
+
+		void SetIri(const std::weak_ptr<Element>&& iri)
+		{
+			m_iri = iri;
+			m_type = PaintType::IRI;
+		}
+
+		void SetIri(const std::weak_ptr<Element>& iri)
+		{
+			m_iri = iri;
+			m_type = PaintType::IRI;
+		}
+
+		Color GetColor() const { return m_color; }
+		Color& GetColor() { return m_color; }
+		std::weak_ptr<Element> GetIri() const { return m_iri; }
+		std::weak_ptr<Element>& GetIri() { return m_iri; }
+
+		Paint() : m_type(PaintType::NONE),  m_color(0, 0, 0, 0) {}
+		~Paint()
+		{
+			switch (m_type)
+			{
+			case Svg::PaintType::IRI: m_iri.reset(); break;
+			default: break;
+			}
+		}
+
+		Paint(const Paint& copy) { Copy(copy); }
+
+		Paint& operator =(const Paint& copy)
+		{
+			Copy(copy);
+			return *this;
+		}
+
+	private:
+		PaintType m_type = PaintType::NONE;
+
+		union
+		{
+			Color m_color;
+			std::weak_ptr<Element> m_iri;
+		};
+
+		void Copy(const Paint& copy)
+		{
+			m_type = copy.m_type;
+			switch (m_type)
+			{
+			case Svg::PaintType::COLOR: m_color = copy.m_color; break;
+			case Svg::PaintType::IRI: m_iri = copy.m_iri;  break;
+			default: m_color = Color(0, 0, 0, 0); break;
+			}
+
+		}
+	};
+
 	struct FillProperties
 	{
 		struct Default
@@ -214,12 +293,12 @@ namespace Svg
 
 		FillRule rule   = FillRule::NONE;
 		float opacity   = MYSVG_UNDEFINED;
-		std::weak_ptr<Element> data;
+		Paint paint;
 
 		void Overlay(const FillProperties& style)
 		{
-			if (data.expired())
-				data = style.data;
+			if (!paint.IsDefined())
+				paint = style.paint;
 			if (rule == FillRule::NONE)
 				rule = style.rule;
 			if (!MYSVG_IS_DEFINED(opacity))
@@ -245,7 +324,7 @@ namespace Svg
 		Length          dashoffset = MYSVG_UNDEFINED;
 		StrokeLinecap   linecap    = StrokeLinecap::NONE;
 		StrokeLinejoin  linejoin   = StrokeLinejoin::NONE;
-		std::weak_ptr<Element> data;
+		Paint paint;
 		std::vector<Length> dashArray;
 
 		float GetWidth(const Element* parent) const { return MYSVG_COMPUTE_LENGTH(width, (parent->GetWidth() + parent->GetHeight()) / 2); }
@@ -253,8 +332,8 @@ namespace Svg
 
 		void Overlay(const StrokeProperties& style)
 		{
-			if (data.expired())
-				data = style.data;
+			if (!paint.IsDefined())
+				paint = style.paint;
 			if (dashArray.empty())
 				dashArray = style.dashArray;
 			if (!MYSVG_IS_DEFINED(opacity))
